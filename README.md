@@ -55,9 +55,11 @@ Les scénarios avec images réelles et refus de permission caméra nécessitent 
 
 Aucune mesure de précision n’est annoncée sans jeu de test annoté.
 
-## Déploiement GitHub / Cloudflare Pages
+## Déploiement GitHub Pages
 
-Le projet est statique et ne possède ni étape de compilation ni répertoire de sortie séparé. Pour Cloudflare Workers avec `wrangler.json`, publier la racine avec `wrangler deploy`; `_worker.js` sert les assets et relaie uniquement les fichiers du modèle via `/hf/` afin d’éviter le problème CORS Hugging Face. Pour Cloudflare Pages, sélectionner le dépôt GitHub, laisser la commande de build vide et utiliser `/` comme répertoire de sortie; le dossier `functions/` fournit le même relais.
+Le projet est statique et ne possède ni étape de compilation ni répertoire de sortie séparé. Pour GitHub Pages, publier la branche ou le répertoire choisi depuis les paramètres du dépôt. La commande de build reste vide et la racine du dépôt constitue le répertoire publié.
+
+GitHub Pages ne fournit pas de proxy CORS. Le navigateur doit donc pouvoir lire directement les fichiers OWL-ViT depuis Hugging Face; si le modèle est bloqué par les en-têtes CORS du fournisseur, un hébergement avec proxy ou des artefacts du modèle servis depuis le même domaine seront nécessaires.
 
 Aucune URL publique n’est indiquée ici car aucun dépôt distant ni déploiement n’a été confirmé dans cet environnement.
 

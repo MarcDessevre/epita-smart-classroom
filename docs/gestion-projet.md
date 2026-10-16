@@ -66,4 +66,4 @@ Pour chaque audit, compter les lignes vérifiables dont l’écart attendu/obser
 
 - Les tests unitaires sont exécutables avec `npm test`.
 - Les tests image réelle, absence de détection et refus caméra restent des scénarios manuels navigateur à exécuter avant présentation.
-- Le déploiement Cloudflare Pages utilise la racine du dépôt, sans commande de build.
+- Le déploiement GitHub Pages utilise la racine du dépôt, sans commande de build.

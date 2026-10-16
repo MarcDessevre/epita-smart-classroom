@@ -213,7 +213,7 @@ async function loadModel() {
     setStatus('Chargement du modèle de vision…', 'loading');
     const transformers = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/+esm');
     transformers.env.allowLocalModels = false;
-    transformers.env.remoteHost = `${window.location.origin}/hf`;
+    transformers.env.remoteHost = 'https://huggingface.co';
     transformers.env.remotePathTemplate = '{model}/resolve/{revision}/';
     RawImage = transformers.RawImage;
     model = await transformers.pipeline('zero-shot-object-detection', MODEL_NAME);
