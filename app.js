@@ -177,6 +177,9 @@ async function analyzeSource(source, label) {
   rawDetections = [];
   currentDetections = [];
   try {
+    if (source === elements.video && (!source.videoWidth || !source.videoHeight)) {
+      throw new Error('la caméra n’a pas encore fourni d’image');
+    }
     const { width, height } = getSourceDimensions(source);
     const sourceCanvas = document.createElement('canvas');
     sourceCanvas.width = width;
@@ -212,9 +215,12 @@ async function loadModel() {
     RawImage = transformers.RawImage;
     model = await transformers.pipeline('zero-shot-object-detection', MODEL_NAME);
     elements.analyzeImage.disabled = !elements.image.src;
+    elements.analyzeFrame.disabled = !stream;
     setStatus('Modèle disponible. Choisissez une image ou démarrez la caméra.', 'success');
   } catch (error) {
     analysisState = 'unavailable';
+    elements.analyzeFrame.disabled = true;
+    elements.analyzeImage.disabled = true;
     setStatus(`Modèle indisponible : ${error.message}. Vérifiez le réseau puis rechargez la page.`, 'error');
     renderDetections();
   }
