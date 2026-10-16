@@ -16,13 +16,15 @@ test('aggregateDetections ignores person and applies threshold', () => {
   assert.equal(result.normalizedDetections.length, 2);
 });
 
-test('buildAudit marks unsupported categories as non verifiable', () => {
+test('normalizeClass maps OWL-ViT board and window labels', () => {
   const expected = buildDefaultExpected();
-  const rows = buildAudit(expected, { chair: 20, table: 10, laptop: 5 });
+  const rows = buildAudit(expected, { chair: 20, table: 10, laptop: 5, blackboard: 1, window: 2 });
 
   const blackboard = rows.find((r) => r.id === 'blackboard');
-  assert.equal(blackboard.verifiable, false);
-  assert.equal(blackboard.status, 'non vérifiable');
+  const window = rows.find((r) => r.id === 'window');
+  assert.equal(blackboard.verifiable, true);
+  assert.equal(blackboard.status, 'conforme');
+  assert.equal(window.status, 'surplus');
 });
 
 test('computeDashboard returns gaps and global status', () => {
@@ -31,7 +33,27 @@ test('computeDashboard returns gaps and global status', () => {
   const data = computeDashboard(rows, { chair: 19, table: 10, laptop: 5, screen: 0 });
 
   assert.equal(data.totalDetected, 34);
-  assert.equal(data.verifiableRules, 4);
-  assert.equal(data.gaps, 1);
+  assert.equal(data.verifiableRules, 6);
+  assert.equal(data.gaps, 2);
   assert.equal(data.globalStatus, 'Écarts détectés');
+});
+
+test('buildAudit distinguishes an empty analysis from an unsupported category', () => {
+  const expected = buildDefaultExpected();
+  const rows = buildAudit(expected, {}, 'empty');
+  const chair = rows.find((row) => row.id === 'chair');
+  const blackboard = rows.find((row) => row.id === 'blackboard');
+
+  assert.equal(chair.status, 'aucune détection produite');
+  assert.equal(chair.verifiable, false);
+  assert.equal(blackboard.status, 'aucune détection produite');
+});
+
+test('unavailable analysis produces an unavailable global status', () => {
+  const expected = buildDefaultExpected();
+  const rows = buildAudit(expected, {}, 'unavailable');
+  const data = computeDashboard(rows, {}, 'unavailable');
+
+  assert.equal(data.verifiableRules, 0);
+  assert.equal(data.globalStatus, 'Analyse indisponible');
 });

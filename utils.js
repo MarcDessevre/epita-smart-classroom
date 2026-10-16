@@ -1,11 +1,11 @@
 (function (global) {
   const CATEGORY_DEFS = [
-    { id: 'table', label: 'Tables/Bureaux', cocoClass: 'dining table', supported: true, expected: 10 },
-    { id: 'chair', label: 'Chaises', cocoClass: 'chair', supported: true, expected: 20 },
-    { id: 'blackboard', label: 'Tableaux', cocoClass: null, supported: false, expected: 1 },
-    { id: 'laptop', label: 'Ordinateurs portables', cocoClass: 'laptop', supported: true, expected: 5 },
-    { id: 'screen', label: 'Écrans', cocoClass: 'tv', supported: true, expected: 0 },
-    { id: 'window', label: 'Fenêtres', cocoClass: null, supported: false, expected: 0 }
+    { id: 'table', label: 'Tables/Bureaux', modelClass: 'dining table', supported: true, expected: 10 },
+    { id: 'chair', label: 'Chaises', modelClass: 'chair', supported: true, expected: 20 },
+    { id: 'blackboard', label: 'Tableaux', modelClass: ['blackboard', 'whiteboard'], supported: true, expected: 1 },
+    { id: 'laptop', label: 'Ordinateurs portables', modelClass: 'laptop', supported: true, expected: 5 },
+    { id: 'screen', label: 'Écrans', modelClass: 'tv', supported: true, expected: 0 },
+    { id: 'window', label: 'Fenêtres', modelClass: 'window', supported: true, expected: 0 }
   ];
 
   function buildDefaultExpected() {
@@ -16,7 +16,9 @@
   }
 
   function normalizeClass(predictedClass) {
-    const found = CATEGORY_DEFS.find((d) => d.cocoClass === predictedClass);
+    const found = CATEGORY_DEFS.find((d) => Array.isArray(d.modelClass)
+      ? d.modelClass.includes(predictedClass)
+      : d.modelClass === predictedClass);
     return found ? found.id : null;
   }
 
@@ -34,7 +36,7 @@
       normalizedDetections.push({
         id: categoryId,
         label: CATEGORY_DEFS.find((d) => d.id === categoryId).label,
-        cocoClass: prediction.class,
+        modelClass: prediction.class,
         score: prediction.score,
         bbox: prediction.bbox
       });
@@ -43,7 +45,7 @@
     return { filtered, counts, normalizedDetections };
   }
 
-  function buildAudit(expectedConfig, counts) {
+  function buildAudit(expectedConfig, counts, analysisState = 'complete') {
     return CATEGORY_DEFS.map((def) => {
       const expected = Number(expectedConfig[def.id] || 0);
       if (!def.supported) {
@@ -54,6 +56,30 @@
           detected: null,
           delta: null,
           status: 'non vérifiable',
+          verifiable: false
+        };
+      }
+
+      if (analysisState === 'unavailable') {
+        return {
+          id: def.id,
+          label: def.label,
+          expected,
+          detected: null,
+          delta: null,
+          status: 'analyse indisponible',
+          verifiable: false
+        };
+      }
+
+      if (analysisState === 'empty' && !counts[def.id]) {
+        return {
+          id: def.id,
+          label: def.label,
+          expected,
+          detected: 0,
+          delta: null,
+          status: 'aucune détection produite',
           verifiable: false
         };
       }
@@ -74,7 +100,7 @@
     });
   }
 
-  function computeDashboard(auditRows, counts) {
+  function computeDashboard(auditRows, counts, analysisState = 'complete') {
     const verifiable = auditRows.filter((r) => r.verifiable);
     const gaps = verifiable.filter((r) => r.delta !== 0).length;
     const totalDetected = Object.values(counts).reduce((sum, n) => sum + n, 0);
@@ -85,7 +111,13 @@
       recognizedCategories,
       verifiableRules: verifiable.length,
       gaps,
-      globalStatus: gaps === 0 ? 'Conforme' : 'Écarts détectés'
+      globalStatus: analysisState === 'unavailable'
+        ? 'Analyse indisponible'
+        : gaps > 0
+          ? 'Écarts détectés'
+          : auditRows.some((r) => r.status === 'non vérifiable' || r.status === 'aucune détection produite')
+            ? 'Vérification partielle'
+            : 'Conforme pour les règles vérifiées'
     };
   }
 

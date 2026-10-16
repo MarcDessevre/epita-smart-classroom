@@ -1,51 +1,69 @@
-# Mini-dossier de gestion de projet — EPITA Smart Classroom
+# Mini-dossier de gestion de projet
 
-## 1) Cadrage
+## Cadrage
 
-### Problématique
-Permettre à un responsable non technique de vérifier rapidement la configuration d'une salle (mobilier/équipements) à partir d'une image, avec transparence sur les limites du modèle.
+### Problématique métier
+Un responsable de salle doit vérifier rapidement une configuration sans compter chaque équipement manuellement, tout en sachant quelles catégories une IA peut réellement observer.
 
 ### Objectifs
-- Détecter et compter les objets reconnus par COCO-SSD (ex. chaises, tables, laptops, écrans).
-- Comparer attendu vs observé pour les catégories vérifiables.
-- Produire un tableau de bord et un rapport d'audit compréhensibles.
-- Exclure toute analyse ou identification des personnes.
+- Fournir une première observation visuelle locale.
+- Comparer les catégories couvertes à une configuration théorique modifiable.
+- Rendre visibles les incertitudes et les catégories non supportées.
+- Produire un rapport imprimable exploitable lors d’un contrôle humain.
 
 ### Utilisateurs cibles
-- Responsable de salle / équipe logistique EPITA.
-- Encadrant pédagogique non technique.
+Responsables de salles, équipes logistiques et encadrants pédagogiques non spécialistes de l’IA.
 
-### Périmètre MVP
-- Interface web responsive.
-- Webcam (capture) + chargement image locale.
-- Détection COCO-SSD côté navigateur avec seuil de confiance paramétrable.
-- Audit, indicateurs et rapport exportable (impression/téléchargement texte).
+### MVP
+Caméra, import d’image locale, OWL-ViT via Transformers.js dans le navigateur, seuil réglable, cadres et scores, audit, KPI, rapport et messages d’erreur.
 
-### Exclusions
-- Reconnaissance d'identité/personne.
-- Entraînement d'un modèle personnalisé.
-- Détection native garantie des tableaux/fenêtres (non supportés par COCO-SSD).
+### Hors périmètre
+Reconnaissance ou identification de personnes, stockage serveur, entraînement d’un modèle, garantie de détection parfaite des catégories, authentification et historique multi-utilisateur.
 
-## 2) Planification (user stories / tâches)
+### Architecture technique
+Application statique composée de `index.html`, `styles.css`, `app.js` et `utils.js`. Transformers.js et OWL-ViT sont chargés depuis CDN. Les fonctions métier pures sont testées avec le Node.js Test Runner. Aucun backend ni base de données.
 
-| ID | Tâche / User story | Priorité | Statut |
+## Backlog
+
+| ID | User story / tâche | Priorité | Statut | Critère d’acceptation |
+|---|---|---|---|---|
+| US01 | Présenter l’objectif et la confidentialité | Haute | Fait | Le premier écran explique l’usage et l’absence de téléversement. |
+| US02 | Démarrer et arrêter la caméra | Haute | Fait | Les boutons et messages reflètent l’état; les pistes sont libérées à l’arrêt. |
+| US03 | Importer une image locale | Haute | Fait | Une image valide est lue localement sans URL publique. |
+| US04 | Charger OWL-ViT | Haute | Fait | L’état de chargement, de succès et d’échec est visible. |
+| US05 | Afficher cadres, catégories et scores | Haute | Fait | Les détections au-dessus du seuil sont listées et dessinées. |
+| US06 | Régler le seuil | Haute | Fait | Le filtrage et les résultats se mettent à jour sans relancer inutilement le modèle. |
+| US07 | Comparer attendu et observé | Haute | Fait | Les quantités et écarts sont calculés seulement quand l’analyse le permet. |
+| US08 | Signaler les limites des catégories | Haute | Fait | Les catégories interrogées et leurs scores sont visibles; les limites restent explicites. |
+| US09 | Calculer le tableau de bord | Haute | Fait | Les cinq KPI proviennent des résultats et de la configuration courante. |
+| US10 | Générer et imprimer le rapport | Moyenne | Fait | Le rapport reflète la source, le modèle, le seuil, les résultats et les limites. |
+| US11 | Valider les scénarios navigateur | Haute | À exécuter | Trois scénarios manuels sont joués avec images et permissions réelles. |
+
+## Risques et mitigations
+
+| Risque | Probabilité | Impact | Mitigation |
 |---|---|---|---|
-| US1 | En tant que responsable, je vois une page d'accueil expliquant l'objectif, la confidentialité et les limites. | Haute | Fait |
-| US2 | En tant qu'utilisateur, je démarre/arrête la webcam et visualise l'aperçu. | Haute | Fait |
-| US3 | En tant qu'utilisateur, je capture une image webcam et lance l'analyse. | Haute | Fait |
-| US4 | En tant qu'utilisateur, je peux charger une image locale de test sans webcam. | Haute | Fait |
-| US5 | En tant qu'utilisateur, je règle le seuil de confiance appliqué à l'affichage/comptage. | Haute | Fait |
-| US6 | En tant qu'utilisateur, je vois les comptages et l'audit attendu/observé pour les catégories vérifiables. | Haute | Fait |
-| US7 | En tant qu'utilisateur, je vois clairement les catégories non prises en charge (tableaux, fenêtres). | Haute | Fait |
-| US8 | En tant qu'utilisateur, je consulte un tableau de bord synthétique avec statut global. | Moyenne | Fait |
-| US9 | En tant qu'utilisateur, je génère/imprime/télécharge un rapport d'audit. | Moyenne | Fait |
-| US10 | En tant qu'équipe projet, nous validons la logique d'agrégation et d'audit par tests simples. | Moyenne | Fait |
+| Classes OWL-ViT et prompts imparfaits | Haute | Élevé | Interroger les libellés mobilier, afficher les scores et conserver le contrôle humain. |
+| Faux positifs ou faux négatifs | Haute | Élevé | Seuil réglable, scores visibles, plusieurs angles et contrôle humain. |
+| Objet masqué, hors champ ou mal éclairé | Haute | Élevé | Recommander plusieurs captures et ne jamais interpréter zéro comme une absence certaine. |
+| Refus ou absence de caméra | Moyenne | Moyen | Message explicite et parcours alternatif par import local. |
+| CDN ou modèle indisponible | Moyenne | Élevé | État d’erreur récupérable, interface conservée et diagnostic réseau. |
+| Compatibilité navigateur / performance | Moyenne | Moyen | HTML statique, navigateur récent recommandé, analyse non concurrente. |
+| Temps de développement limité | Haute | Moyen | MVP sans backend, tests ciblés et documentation concise. |
 
-## 3) Risques principaux
+## KPI
 
-1. **Faux négatifs/faux positifs** liés aux limites du modèle, cadrage, occlusions, lumière.
-2. **Catégories métier non couvertes** (tableaux/fenêtres) pouvant être mal interprétées sans message clair.
-3. **Performance navigateur** sur machines anciennes pendant l'inférence.
-4. **Refus caméra (permissions)** empêchant le flux live, d'où besoin du mode image locale.
-5. **Confiance excessive dans les chiffres** si l'utilisateur ignore les limites d'observation.
+### Taux de détection sur jeu annoté
+Constituer un jeu d’images représentatif, annoter les objets attendus, puis comparer les objets détectés aux annotations à seuil fixé. Publier précision, rappel et taux de détection par classe; ne pas présenter de valeur avant cette mesure.
 
+### Temps moyen d’un audit
+Mesurer avec un chronomètre le délai entre l’ouverture de l’application et l’impression du rapport sur un échantillon d’audits, puis calculer la moyenne et la médiane. Documenter séparément le temps de chargement du modèle.
+
+### Nombre d’écarts identifiés
+Pour chaque audit, compter les lignes vérifiables dont l’écart attendu/observé est différent de zéro. Comparer ensuite ce nombre au relevé humain afin d’identifier les écarts manqués ou superflus.
+
+## Validation de présentation
+
+- Les tests unitaires sont exécutables avec `npm test`.
+- Les tests image réelle, absence de détection et refus caméra restent des scénarios manuels navigateur à exécuter avant présentation.
+- Le déploiement Cloudflare Pages utilise la racine du dépôt, sans commande de build.

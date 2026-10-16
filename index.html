@@ -2,86 +2,78 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>EPITA Smart Classroom</title>
     <link rel="stylesheet" href="styles.css" />
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
   </head>
   <body>
-    <header>
-      <h1>EPITA Smart Classroom</h1>
-      <p>
-        Application d'audit visuel de salle : détection d'équipements, comparaison à une
-        configuration attendue et génération d'un rapport lisible.
-      </p>
+    <header class="masthead">
+      <div class="eyebrow">EPITA / IA for Managers</div>
+      <h1>Smart Classroom</h1>
+      <p>Un premier contrôle visuel de la configuration d’une salle, réalisé localement dans votre navigateur.</p>
+      <div class="privacy-note"><strong>Confidentialité :</strong> aucune image n’est téléversée ou enregistrée. Les personnes ne sont ni identifiées ni analysées.</div>
     </header>
 
     <main>
-      <section class="panel">
-        <h2>Caméra et image de test</h2>
+      <section class="panel source-panel">
+        <div class="section-heading"><div><span class="eyebrow">01 / Observation</span><h2>Choisir une source</h2></div><span class="badge">Analyse locale</span></div>
         <div class="actions">
-          <button id="startCameraBtn">Démarrer la caméra</button>
-          <button id="stopCameraBtn" disabled>Arrêter la caméra</button>
-          <button id="analyzeFrameBtn" disabled>Analyser l'image courante</button>
+          <button id="startCameraBtn" type="button">Démarrer la caméra</button>
+          <button id="stopCameraBtn" type="button" class="secondary" disabled>Arrêter la caméra</button>
+          <button id="analyzeFrameBtn" type="button" class="accent" disabled>Analyser la vue</button>
         </div>
-        <div class="actions">
-          <button id="analyzeImageBtn" disabled>Analyser l'image de test fournie</button>
-        </div>
-        <label for="imageUrlInput">URL image de test :</label>
-        <div class="actions">
-          <input
-            id="imageUrlInput"
-            type="url"
-            value="https://github.com/user-attachments/assets/46113322-222a-41ea-a217-2d004d5827fa"
-            placeholder="https://..."
-          />
-          <button id="loadImageUrlBtn">Charger l'image URL</button>
-        </div>
-        <label for="thresholdRange">Seuil de confiance : <span id="thresholdValue">0.35</span></label>
-        <input id="thresholdRange" type="range" min="0.1" max="0.95" step="0.05" value="0.35" />
-
-        <div class="viewer">
+        <label class="file-picker" for="imageInput"><span>Importer une image locale</span><input id="imageInput" type="file" accept="image/*" /></label>
+        <div class="viewer" aria-label="Zone de visualisation de la source">
+          <div class="viewer-placeholder">Votre image ou votre caméra apparaîtra ici</div>
           <video id="video" autoplay playsinline muted></video>
-          <img id="testImage" alt="Image de test fournie" src="test-image.png" />
+          <img id="testImage" alt="Image locale importée" />
           <canvas id="overlayCanvas"></canvas>
         </div>
-        <p id="status">Chargement du modèle…</p>
+        <div class="source-controls">
+          <button id="analyzeImageBtn" type="button" class="accent" disabled>Analyser l’image importée</button>
+          <label for="thresholdRange">Seuil minimal <output id="thresholdValue">35 %</output></label>
+          <input id="thresholdRange" type="range" min="0.1" max="0.95" step="0.05" value="0.35" />
+        </div>
+        <p id="status" class="status" data-type="loading">Chargement du modèle de vision…</p>
       </section>
 
-      <section class="panel two-col">
-        <div>
-          <h2>Configuration théorique</h2>
-          <div class="config-grid">
-            <label>Tables/Bureaux attendus <input id="expectedTables" type="number" min="0" value="10" /></label>
-            <label>Chaises attendues <input id="expectedChairs" type="number" min="0" value="20" /></label>
-            <label>Tableaux attendus <input id="expectedBoards" type="number" min="0" value="1" /></label>
-            <label>Ordinateurs portables attendus <input id="expectedLaptops" type="number" min="0" value="5" /></label>
-            <label>Fenêtres attendues <input id="expectedWindows" type="number" min="0" value="0" /></label>
-            <label>Écrans attendus <input id="expectedScreens" type="number" min="0" value="0" /></label>
-          </div>
-        </div>
-
-        <div>
-          <h2>Résultats de détection</h2>
-          <ul id="detectionsList"></ul>
-          <h3>Catégories non prises en charge</h3>
-          <ul id="unsupportedList"></ul>
+      <section class="panel">
+        <div class="section-heading"><div><span class="eyebrow">02 / Référence</span><h2>Configuration attendue</h2></div><span class="hint">Modifiable avant ou après analyse</span></div>
+        <div class="config-grid">
+          <label>Tables / bureaux <input id="expected-table" type="number" min="0" value="10" /></label>
+          <label>Chaises <input id="expected-chair" type="number" min="0" value="20" /></label>
+          <label>Tableaux <input id="expected-blackboard" type="number" min="0" value="1" /></label>
+          <label>Ordinateurs portables <input id="expected-laptop" type="number" min="0" value="5" /></label>
+          <label>Écrans <input id="expected-screen" type="number" min="0" value="0" /></label>
+          <label>Fenêtres <input id="expected-window" type="number" min="0" value="0" /></label>
         </div>
       </section>
 
       <section class="panel">
-        <h2>Tableau de bord</h2>
-        <div class="dashboard" id="dashboard"></div>
+        <div class="section-heading"><div><span class="eyebrow">03 / Décision</span><h2>Tableau de bord</h2></div></div>
+        <div id="dashboard" class="dashboard"></div>
+        <p class="disclaimer">Cet outil aide à préparer une vérification. Il ne remplace pas le contrôle humain, notamment pour les catégories non supportées ou les objets masqués.</p>
       </section>
 
-      <section class="panel">
-        <h2>Rapport d'audit</h2>
-        <button id="generateReportBtn">Générer / actualiser le rapport</button>
+      <section class="split-layout">
+        <div class="panel">
+          <span class="eyebrow">Résultats observés</span><h2>Détections</h2>
+          <ul id="detectionsList" class="result-list"></ul>
+          <h3>Catégories non prises en charge</h3><ul id="unsupportedList" class="result-list muted"></ul>
+        </div>
+        <div class="panel">
+          <span class="eyebrow">Comparaison</span><h2>Audit par catégorie</h2>
+          <div class="table-wrap"><table><thead><tr><th>Catégorie</th><th>Attendu</th><th>Observé</th><th>Écart</th><th>Statut</th></tr></thead><tbody id="auditTableBody"></tbody></table></div>
+        </div>
+      </section>
+
+      <section class="panel report-panel">
+        <div class="section-heading"><div><span class="eyebrow">04 / Traçabilité</span><h2>Rapport d’audit</h2></div><div class="actions"><button id="generateReportBtn" type="button" class="secondary">Actualiser</button><button id="printReportBtn" type="button">Imprimer / PDF</button></div></div>
         <pre id="report"></pre>
       </section>
     </main>
-
+    <footer>EPITA Smart Classroom · OWL-ViT · Traitement dans le navigateur</footer>
+    <script src="utils.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

@@ -1,524 +1,301 @@
+const $ = (id) => document.getElementById(id);
 const elements = {
-  video: document.getElementById("video"),
-  canvas: document.getElementById("overlayCanvas"),
-  ctx: document.getElementById("overlayCanvas").getContext("2d"),
-  testImage: document.getElementById("testImage"),
-  startCameraBtn: document.getElementById("startCameraBtn"),
-  stopCameraBtn: document.getElementById("stopCameraBtn"),
-  analyzeFrameBtn: document.getElementById("analyzeFrameBtn"),
-  analyzeImageBtn: document.getElementById("analyzeImageBtn"),
-  imageUrlInput: document.getElementById("imageUrlInput"),
-  loadImageUrlBtn: document.getElementById("loadImageUrlBtn"),
-  thresholdRange: document.getElementById("thresholdRange"),
-  thresholdValue: document.getElementById("thresholdValue"),
-  status: document.getElementById("status"),
-  detectionsList: document.getElementById("detectionsList"),
-  unsupportedList: document.getElementById("unsupportedList"),
-  dashboard: document.getElementById("dashboard"),
-  generateReportBtn: document.getElementById("generateReportBtn"),
-  report: document.getElementById("report")
+  video: $('video'), image: $('testImage'), canvas: $('overlayCanvas'),
+  startCamera: $('startCameraBtn'), stopCamera: $('stopCameraBtn'),
+  analyzeFrame: $('analyzeFrameBtn'), analyzeImage: $('analyzeImageBtn'),
+  imageInput: $('imageInput'), threshold: $('thresholdRange'), thresholdValue: $('thresholdValue'),
+  status: $('status'), detections: $('detectionsList'), unsupported: $('unsupportedList'),
+  auditTable: $('auditTableBody'), dashboard: $('dashboard'), report: $('report'),
+  generateReport: $('generateReportBtn'), printReport: $('printReportBtn')
 };
 
-const expectedConfigFields = {
-  tables: document.getElementById("expectedTables"),
-  chairs: document.getElementById("expectedChairs"),
-  boards: document.getElementById("expectedBoards"),
-  laptops: document.getElementById("expectedLaptops"),
-  windows: document.getElementById("expectedWindows"),
-  screens: document.getElementById("expectedScreens")
-};
-
-const requirementToModelClass = {
-  tables: "dining table",
-  chairs: "chair",
-  laptops: "laptop",
-  screens: "tv"
-};
-
-const unsupportedRequiredCategories = ["boards", "windows"];
-const requiredLabels = {
-  tables: "Tables/Bureaux",
-  chairs: "Chaises",
-  boards: "Tableaux",
-  laptops: "Ordinateurs portables",
-  windows: "Fenêtres",
-  screens: "Écrans"
-};
-
-let model;
+let model = null;
+let stream = null;
+let sourceMode = null;
+let sourceObjectUrl = null;
+let rawDetections = [];
 let currentDetections = [];
-let stream;
-const MODEL_MAX_BOXES = 100;
-const MODEL_MIN_SCORE = 0.05;
-const CHAIR_MIN_THRESHOLD = 0.2;
-const TILE_IOU_THRESHOLD = 0.45;
-const TILE_SCALE = 0.7;
+let analysisState = 'unavailable';
+let analysisLabel = 'Aucune source analysée';
+let analysisInProgress = false;
+let RawImage;
+const MODEL_NAME = 'Xenova/owlvit-base-patch32';
+const MODEL_LABELS = ['dining table', 'chair', 'laptop', 'tv', 'blackboard', 'whiteboard', 'window', 'person'];
 
-function isStillImage(element) {
-  return element instanceof HTMLImageElement;
+function setStatus(message, type = 'info') {
+  elements.status.textContent = message;
+  elements.status.dataset.type = type;
 }
 
-function getSourceDimensions(sourceElement) {
-  return {
-    width: sourceElement.videoWidth || sourceElement.naturalWidth || 0,
-    height: sourceElement.videoHeight || sourceElement.naturalHeight || 0
-  };
+function getThreshold() {
+  return Number(elements.threshold.value);
 }
 
-function getEffectiveThreshold(detectionClass, threshold) {
-  if (detectionClass === "chair") {
-    return Math.min(threshold, CHAIR_MIN_THRESHOLD);
-  }
-  return threshold;
+function updateThresholdLabel() {
+  elements.thresholdValue.textContent = `${Math.round(getThreshold() * 100)} %`;
 }
 
-function sanitizeImageUrl(rawUrl) {
-  try {
-    const parsed = new URL(rawUrl);
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      return null;
-    }
-    return parsed.toString();
-  } catch {
-    return null;
-  }
+function getExpectedConfig() {
+  return Object.fromEntries(AuditUtils.CATEGORY_DEFS.map((definition) => [
+    definition.id,
+    Math.max(0, Number($(`expected-${definition.id}`).value) || 0)
+  ]));
 }
 
-function intersectionOverUnion(a, b) {
-  const [ax, ay, aw, ah] = a;
-  const [bx, by, bw, bh] = b;
-  const a2x = ax + aw;
-  const a2y = ay + ah;
-  const b2x = bx + bw;
-  const b2y = by + bh;
-
-  const interX1 = Math.max(ax, bx);
-  const interY1 = Math.max(ay, by);
-  const interX2 = Math.min(a2x, b2x);
-  const interY2 = Math.min(a2y, b2y);
-  const interW = Math.max(0, interX2 - interX1);
-  const interH = Math.max(0, interY2 - interY1);
-  const interArea = interW * interH;
-  if (interArea === 0) {
-    return 0;
-  }
-  const areaA = aw * ah;
-  const areaB = bw * bh;
-  return interArea / (areaA + areaB - interArea);
+function filterDetections() {
+  return rawDetections.filter((prediction) => prediction.class !== 'person' && prediction.score >= getThreshold());
 }
 
-function deduplicateDetections(detections, iouThreshold = TILE_IOU_THRESHOLD) {
-  const grouped = detections.reduce((acc, det) => {
-    if (!acc[det.class]) {
-      acc[det.class] = [];
-    }
-    acc[det.class].push(det);
-    return acc;
-  }, {});
+function getSourceDimensions(source) {
+  return { width: source.videoWidth || source.naturalWidth || 0, height: source.videoHeight || source.naturalHeight || 0 };
+}
 
-  const merged = [];
-  Object.values(grouped).forEach((group) => {
-    const sorted = [...group].sort((a, b) => b.score - a.score);
-    const kept = [];
+function resizeCanvas(source) {
+  const rect = source.getBoundingClientRect();
+  elements.canvas.width = Math.max(1, rect.width);
+  elements.canvas.height = Math.max(1, rect.height);
+}
 
-    while (sorted.length > 0) {
-      const best = sorted.shift();
-      kept.push(best);
-      for (let i = sorted.length - 1; i >= 0; i -= 1) {
-        if (intersectionOverUnion(best.bbox, sorted[i].bbox) >= iouThreshold) {
-          sorted.splice(i, 1);
-        }
-      }
-    }
-    merged.push(...kept);
+function drawDetections(detections, source) {
+  resizeCanvas(source);
+  const context = elements.canvas.getContext('2d');
+  context.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
+  const { width, height } = getSourceDimensions(source);
+  if (!width || !height) return;
+  const scale = Math.min(elements.canvas.width / width, elements.canvas.height / height);
+  const offsetX = (elements.canvas.width - width * scale) / 2;
+  const offsetY = (elements.canvas.height - height * scale) / 2;
+  context.font = '600 12px sans-serif';
+  context.lineWidth = 2;
+  detections.forEach((prediction) => {
+    const [x, y, boxWidth, boxHeight] = prediction.bbox;
+    const displayX = offsetX + x * scale;
+    const displayY = offsetY + y * scale;
+    const displayWidth = boxWidth * scale;
+    const displayHeight = boxHeight * scale;
+    const label = `${prediction.class} ${Math.round(prediction.score * 100)}%`;
+    context.strokeStyle = '#a6e22e';
+    context.strokeRect(displayX, displayY, displayWidth, displayHeight);
+    context.fillStyle = '#101820';
+    context.fillRect(displayX, Math.max(0, displayY - 20), context.measureText(label).width + 10, 20);
+    context.fillStyle = '#f7f5ef';
+    context.fillText(label, displayX + 5, Math.max(14, displayY - 6));
   });
-
-  return merged;
 }
 
-function createImageTiles(width, height) {
-  const tileWidth = Math.max(1, Math.floor(width * TILE_SCALE));
-  const tileHeight = Math.max(1, Math.floor(height * TILE_SCALE));
-  const xStarts = [...new Set([0, Math.max(0, Math.floor((width - tileWidth) / 2)), Math.max(0, width - tileWidth)])];
-  const yStarts = [...new Set([0, Math.max(0, Math.floor((height - tileHeight) / 2)), Math.max(0, height - tileHeight)])];
-  const tiles = [];
+function renderDetections() {
+  currentDetections = filterDetections();
+  const counts = AuditUtils.aggregateDetections(currentDetections, 0).counts;
+  const displayState = analysisState === 'unavailable'
+    ? 'unavailable'
+    : currentDetections.length ? 'complete' : 'empty';
+  const auditRows = AuditUtils.buildAudit(getExpectedConfig(), counts, displayState);
+  const dashboard = AuditUtils.computeDashboard(auditRows, counts, displayState);
 
-  yStarts.forEach((y) => {
-    xStarts.forEach((x) => {
-      tiles.push({ x, y, width: tileWidth, height: tileHeight });
+  elements.detections.replaceChildren();
+  const message = document.createElement('li');
+  if (!currentDetections.length) {
+    message.textContent = displayState === 'empty' && analysisState !== 'unavailable'
+      ? 'Aucune détection au-dessus du seuil. Cela ne prouve pas une absence.'
+      : 'Aucun résultat disponible.';
+    elements.detections.appendChild(message);
+  } else {
+    currentDetections.forEach((prediction) => {
+      const item = document.createElement('li');
+      item.textContent = `${prediction.class} - confiance ${Math.round(prediction.score * 100)} %`;
+      elements.detections.appendChild(item);
     });
+  }
+
+  elements.auditTable.replaceChildren();
+  auditRows.forEach((row) => {
+    const tableRow = document.createElement('tr');
+    [row.label, row.expected, row.detected ?? 'N/D', row.delta == null ? 'N/D' : row.delta > 0 ? `+${row.delta}` : row.delta, row.status]
+      .forEach((value) => {
+        const cell = document.createElement('td');
+        cell.textContent = String(value);
+        tableRow.appendChild(cell);
+      });
+    elements.auditTable.appendChild(tableRow);
   });
 
-  return tiles;
+  elements.dashboard.replaceChildren();
+  [['Objets détectés', dashboard.totalDetected], ['Catégories avec détection', dashboard.recognizedCategories],
+    ['Catégories vérifiables', dashboard.verifiableRules], ['Écarts observés', dashboard.gaps],
+    ['Statut global', dashboard.globalStatus]].forEach(([label, value]) => {
+    const item = document.createElement('div');
+    item.className = 'kpi';
+    const caption = document.createElement('span');
+    caption.textContent = label;
+    const result = document.createElement('strong');
+    result.textContent = value;
+    item.append(caption, result);
+    elements.dashboard.appendChild(item);
+  });
+  elements.dashboard.dataset.status = dashboard.globalStatus;
+  updateReport(auditRows, dashboard);
 }
 
-async function detectOnTile(sourceImage, tile) {
-  const tileCanvas = document.createElement("canvas");
-  tileCanvas.width = tile.width;
-  tileCanvas.height = tile.height;
-  const tileCtx = tileCanvas.getContext("2d");
-  tileCtx.drawImage(
-    sourceImage,
-    tile.x,
-    tile.y,
-    tile.width,
-    tile.height,
-    0,
-    0,
-    tile.width,
-    tile.height
-  );
-
-  const tileDetections = await model.detect(tileCanvas, MODEL_MAX_BOXES, MODEL_MIN_SCORE);
-  return tileDetections.map((det) => ({
-    ...det,
-    bbox: [det.bbox[0] + tile.x, det.bbox[1] + tile.y, det.bbox[2], det.bbox[3]]
-  }));
+function renderUnsupported() {
+  elements.unsupported.replaceChildren();
+  AuditUtils.unsupportedCategories().forEach((label) => {
+    const item = document.createElement('li');
+    item.textContent = `${label}: non prise en charge par OWL-ViT avec les libellés configurés.`;
+    elements.unsupported.appendChild(item);
+  });
 }
 
-async function collectRawDetections(sourceElement) {
-  const baseDetections = await model.detect(sourceElement, MODEL_MAX_BOXES, MODEL_MIN_SCORE);
-  const peopleInFrame = baseDetections.filter((det) => det.class === "person").length;
+function updateReport(auditRows, dashboard) {
+  const counts = AuditUtils.aggregateDetections(currentDetections, 0).counts;
+  const lines = [
+    'RAPPORT D’AUDIT - EPITA SMART CLASSROOM',
+    `Date et heure : ${new Date().toLocaleString('fr-FR')}`,
+    `Source : ${analysisLabel}`,
+    `Modèle : OWL-ViT (${MODEL_NAME}) via Transformers.js`,
+    `Seuil de confiance : ${Math.round(getThreshold() * 100)} %`, '',
+    `Statut global : ${dashboard.globalStatus}`,
+    'Justification : un résultat nul peut provenir d’un objet masqué, hors champ, mal éclairé ou non reconnu.', '',
+    'Objets effectivement détectés :',
+    Object.keys(counts).length ? Object.entries(counts).map(([name, count]) => `- ${name} : ${count}`) : '- Aucun objet au-dessus du seuil.', '',
+    'Configuration attendue / observée:',
+    auditRows.map((row) => row.detected == null
+      ? `- ${row.label} : attendu ${row.expected}, observation indisponible (${row.status}).`
+      : `- ${row.label} : attendu ${row.expected}, détecté ${row.detected}, écart ${row.delta == null ? 'non calculable' : row.delta}. ${row.status}.`), '',
+    `Catégories non prises en charge : ${AuditUtils.unsupportedCategories().length ? AuditUtils.unsupportedCategories().join(', ') : 'aucune parmi les catégories configurées.'}`,
+    'Limites : OWL-ViT peut produire des faux positifs ou faux négatifs; les personnes sont ignorées et aucune image n’est enregistrée ni envoyée.',
+    'Recommandations : multiplier les angles de vue et confirmer chaque écart par un contrôle humain.'
+  ].flat();
+  elements.report.textContent = lines.join('\n');
+}
 
-  if (!isStillImage(sourceElement)) {
-    return { rawDetections: baseDetections, peopleInFrame };
+async function analyzeSource(source, label) {
+  if (!model || analysisInProgress) return;
+  analysisInProgress = true;
+  elements.analyzeFrame.disabled = true;
+  elements.analyzeImage.disabled = true;
+  setStatus('Analyse en cours…', 'loading');
+  rawDetections = [];
+  currentDetections = [];
+  try {
+    const { width, height } = getSourceDimensions(source);
+    const sourceCanvas = document.createElement('canvas');
+    sourceCanvas.width = width;
+    sourceCanvas.height = height;
+    sourceCanvas.getContext('2d').drawImage(source, 0, 0, width, height);
+    const predictions = await model(await RawImage.fromCanvas(sourceCanvas), MODEL_LABELS, { threshold: 0.01 });
+    rawDetections = predictions.map((prediction) => ({
+      class: prediction.label,
+      score: prediction.score,
+      bbox: [prediction.box.xmin, prediction.box.ymin, prediction.box.xmax - prediction.box.xmin, prediction.box.ymax - prediction.box.ymin]
+    }));
+    analysisState = rawDetections.some((prediction) => prediction.class !== 'person') ? 'complete' : 'empty';
+    analysisLabel = label;
+    drawDetections(filterDetections(), source);
+    renderDetections();
+    setStatus(`${currentDetections.length} objet(s) retenu(s) après filtrage. Les personnes sont ignorées.`, 'success');
+  } catch (error) {
+    analysisState = 'unavailable';
+    analysisLabel = label;
+    setStatus(`Analyse impossible : ${error.message}. Réessayez avec une autre source.`, 'error');
+    renderDetections();
+  } finally {
+    analysisInProgress = false;
+    elements.analyzeFrame.disabled = !stream;
+    elements.analyzeImage.disabled = !elements.image.src || !model;
   }
-
-  const { width, height } = getSourceDimensions(sourceElement);
-  if (!width || !height) {
-    return { rawDetections: baseDetections, peopleInFrame };
-  }
-
-  const tiles = createImageTiles(width, height);
-  const tiledDetections = await Promise.all(tiles.map((tile) => detectOnTile(sourceElement, tile)));
-  const merged = deduplicateDetections([...baseDetections, ...tiledDetections.flat()]);
-  return { rawDetections: merged, peopleInFrame };
 }
 
 async function loadModel() {
   try {
-    model = await cocoSsd.load();
-    elements.analyzeImageBtn.disabled = false;
-    setStatus("Modèle chargé. Prêt pour l'analyse.");
+    setStatus('Chargement du modèle de vision…', 'loading');
+    const transformers = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/+esm');
+    RawImage = transformers.RawImage;
+    model = await transformers.pipeline('zero-shot-object-detection', MODEL_NAME);
+    elements.analyzeImage.disabled = !elements.image.src;
+    setStatus('Modèle disponible. Choisissez une image ou démarrez la caméra.', 'success');
   } catch (error) {
-    setStatus(`Échec du chargement du modèle: ${error.message}`);
+    analysisState = 'unavailable';
+    setStatus(`Modèle indisponible : ${error.message}. Vérifiez le réseau puis rechargez la page.`, 'error');
+    renderDetections();
   }
-}
-
-function setStatus(message) {
-  elements.status.textContent = message;
-}
-
-function getThreshold() {
-  return Number(elements.thresholdRange.value);
-}
-
-function updateThresholdLabel() {
-  elements.thresholdValue.textContent = getThreshold().toFixed(2);
-}
-
-function clearCanvas() {
-  elements.ctx.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
-}
-
-function resizeCanvasFor(target) {
-  const rect = target.getBoundingClientRect();
-  elements.canvas.width = rect.width;
-  elements.canvas.height = rect.height;
-}
-
-function drawDetections(detections, sourceElement) {
-  resizeCanvasFor(sourceElement);
-  clearCanvas();
-
-  const srcWidth = sourceElement.videoWidth || sourceElement.naturalWidth;
-  const srcHeight = sourceElement.videoHeight || sourceElement.naturalHeight;
-  if (!srcWidth || !srcHeight) {
-    return;
-  }
-
-  const scale = Math.min(elements.canvas.width / srcWidth, elements.canvas.height / srcHeight);
-  const displayWidth = srcWidth * scale;
-  const displayHeight = srcHeight * scale;
-  const offsetX = (elements.canvas.width - displayWidth) / 2;
-  const offsetY = (elements.canvas.height - displayHeight) / 2;
-
-  elements.ctx.strokeStyle = "#00e676";
-  elements.ctx.fillStyle = "#00e676";
-  elements.ctx.lineWidth = 2;
-  elements.ctx.font = "13px Arial";
-
-  detections.forEach((det) => {
-    const [x, y, w, h] = det.bbox;
-    const sx = offsetX + x * scale;
-    const sy = offsetY + y * scale;
-    const sw = w * scale;
-    const sh = h * scale;
-
-    elements.ctx.strokeRect(sx, sy, sw, sh);
-    const label = `${det.class} (${(det.score * 100).toFixed(1)}%)`;
-    elements.ctx.fillText(label, sx, Math.max(12, sy - 4));
-  });
-}
-
-function getExpectedConfig() {
-  return Object.fromEntries(
-    Object.entries(expectedConfigFields).map(([key, input]) => [key, Number(input.value) || 0])
-  );
-}
-
-function countByClass(detections) {
-  return detections.reduce((acc, det) => {
-    acc[det.class] = (acc[det.class] || 0) + 1;
-    return acc;
-  }, {});
-}
-
-function getAuditRows(counts, expectedConfig) {
-  const rows = [];
-
-  Object.entries(requirementToModelClass).forEach(([reqKey, modelClass]) => {
-    const expected = expectedConfig[reqKey] || 0;
-    const detected = counts[modelClass] || 0;
-    const gap = detected - expected;
-    rows.push({
-      categoryKey: reqKey,
-      expected,
-      detected,
-      gap,
-      verifiable: true,
-      status: gap === 0 ? "OK" : "Écart"
-    });
-  });
-
-  unsupportedRequiredCategories.forEach((reqKey) => {
-    rows.push({
-      categoryKey: reqKey,
-      expected: expectedConfig[reqKey] || 0,
-      detected: null,
-      gap: null,
-      verifiable: false,
-      status: "Non prise en charge"
-    });
-  });
-
-  return rows;
-}
-
-function updateDetectionList(detections) {
-  elements.detectionsList.replaceChildren();
-  if (detections.length === 0) {
-    const item = document.createElement("li");
-    item.textContent = "Aucune détection au-dessus du seuil.";
-    elements.detectionsList.appendChild(item);
-    return;
-  }
-
-  detections.forEach((det) => {
-    const item = document.createElement("li");
-    item.textContent = `${det.class} — confiance ${(det.score * 100).toFixed(1)}%`;
-    elements.detectionsList.appendChild(item);
-  });
-}
-
-function updateUnsupportedList() {
-  elements.unsupportedList.replaceChildren();
-  unsupportedRequiredCategories.forEach((key) => {
-    const item = document.createElement("li");
-    item.textContent = `${requiredLabels[key]} (non reconnue par COCO-SSD)`;
-    elements.unsupportedList.appendChild(item);
-  });
-}
-
-function updateDashboard(detections) {
-  const counts = countByClass(detections);
-  const expected = getExpectedConfig();
-  const rows = getAuditRows(counts, expected);
-  const total = detections.length;
-  const recognizedCategories = Object.keys(counts).length;
-  const verifiableRules = rows.filter((r) => r.verifiable).length;
-  const gaps = rows.filter((r) => r.verifiable && r.gap !== 0).length;
-  const globalStatus = gaps === 0 ? "Conforme (sur catégories vérifiables)" : "Écarts à vérifier";
-
-  const kpis = [
-    ["Objets détectés", String(total)],
-    ["Catégories reconnues", String(recognizedCategories)],
-    ["Règles vérifiables", String(verifiableRules)],
-    ["Écarts observés", String(gaps)],
-    ["Statut global", globalStatus]
-  ];
-
-  elements.dashboard.replaceChildren();
-  kpis.forEach(([title, value]) => {
-    const div = document.createElement("div");
-    div.className = "kpi";
-    const strong = document.createElement("strong");
-    strong.textContent = title;
-    div.appendChild(strong);
-    div.appendChild(document.createElement("br"));
-    div.appendChild(document.createTextNode(value));
-    elements.dashboard.appendChild(div);
-  });
-}
-
-function buildReport(detections) {
-  const expected = getExpectedConfig();
-  const counts = countByClass(detections);
-  const rows = getAuditRows(counts, expected);
-  const lines = [];
-
-  lines.push("RAPPORT D'AUDIT — EPITA Smart Classroom");
-  lines.push(`Date: ${new Date().toLocaleString("fr-FR")}`);
-  lines.push("");
-  lines.push("Contexte");
-  lines.push("- Audit visuel automatisé d'une salle de cours via modèle COCO-SSD dans le navigateur.");
-  lines.push("- Exclusion active des personnes: toute détection de classe 'person' est ignorée.");
-  lines.push("");
-
-  lines.push("Objets détectés");
-  if (detections.length === 0) {
-    lines.push("- Aucun objet détecté au-dessus du seuil courant.");
-  } else {
-    Object.entries(counts)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .forEach(([cls, count]) => lines.push(`- ${cls}: ${count}`));
-  }
-  lines.push("");
-
-  lines.push("Comparaison attendu / observé");
-  rows.forEach((row) => {
-    const name = requiredLabels[row.categoryKey];
-    if (!row.verifiable) {
-      lines.push(`- ${name}: attendu ${row.expected}, non vérifiable automatiquement (${row.status}).`);
-      return;
-    }
-    lines.push(
-      `- ${name}: attendu ${row.expected}, détecté ${row.detected}, écart ${row.gap >= 0 ? "+" : ""}${row.gap} (${row.status}).`
-    );
-  });
-  lines.push("");
-
-  lines.push("Catégories non prises en charge");
-  unsupportedRequiredCategories.forEach((key) => {
-    lines.push(`- ${requiredLabels[key]}`);
-  });
-  lines.push("");
-
-  lines.push("Limites de l'analyse");
-  lines.push("- Les objets masqués, hors champ ou flous peuvent être sous-détectés.");
-  lines.push("- Le modèle COCO-SSD ne couvre pas toutes les catégories métier demandées.");
-  lines.push("- Le résultat dépend du seuil de confiance configuré.");
-  lines.push("");
-
-  lines.push("Recommandations");
-  lines.push("- Réaliser plusieurs captures sous différents angles.");
-  lines.push("- Compléter par un contrôle humain pour les catégories non prises en charge.");
-  lines.push("- Refaire l'audit en cas de changement d'aménagement de la salle.");
-
-  elements.report.textContent = lines.join("\n");
-}
-
-async function detectFrom(sourceElement) {
-  if (!model) {
-    setStatus("Le modèle n'est pas chargé.");
-    return;
-  }
-
-  const threshold = getThreshold();
-  const { rawDetections, peopleInFrame } = await collectRawDetections(sourceElement);
-  const detections = rawDetections.filter((det) => {
-    const effectiveThreshold = getEffectiveThreshold(det.class, threshold);
-    return det.class !== "person" && det.score >= effectiveThreshold;
-  });
-
-  currentDetections = detections;
-  drawDetections(detections, sourceElement);
-  updateDetectionList(detections);
-  updateUnsupportedList();
-  updateDashboard(detections);
-  buildReport(detections);
-
-  setStatus(
-    `${detections.length} objet(s) détecté(s) (personnes ignorées: ${peopleInFrame}). Seuil global: ${threshold.toFixed(2)} (chaises min ${Math.min(threshold, CHAIR_MIN_THRESHOLD).toFixed(2)}).`
-  );
 }
 
 async function startCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setStatus('Ce navigateur ne prend pas en charge l’accès à la caméra. Utilisez un import local.', 'error');
+    return;
+  }
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     elements.video.srcObject = stream;
-    elements.video.style.display = "block";
-    elements.testImage.style.display = "none";
-    elements.startCameraBtn.disabled = true;
-    elements.stopCameraBtn.disabled = false;
-    elements.analyzeFrameBtn.disabled = false;
-    setStatus("Caméra active.");
+    elements.video.style.display = 'block';
+    elements.image.style.display = 'none';
+    sourceMode = 'camera';
+    elements.startCamera.disabled = true;
+    elements.stopCamera.disabled = false;
+    elements.analyzeFrame.disabled = !model;
+    setStatus('Caméra active. Cadrez uniquement le mobilier et les équipements.', 'success');
   } catch (error) {
-    setStatus(`Impossible d'accéder à la caméra: ${error.message}`);
+    const message = error.name === 'NotAllowedError' ? 'Autorisation caméra refusée.' : error.name === 'NotFoundError' ? 'Aucune caméra disponible.' : `Accès caméra impossible : ${error.message}`;
+    setStatus(`${message} Vous pouvez importer une image locale.`, 'error');
   }
 }
 
 function stopCamera() {
-  if (stream) {
-    stream.getTracks().forEach((track) => track.stop());
-    stream = null;
-  }
+  stream?.getTracks().forEach((track) => track.stop());
+  stream = null;
   elements.video.srcObject = null;
-  elements.startCameraBtn.disabled = false;
-  elements.stopCameraBtn.disabled = true;
-  elements.analyzeFrameBtn.disabled = true;
-  clearCanvas();
-  setStatus("Caméra arrêtée.");
-}
-
-async function analyzeProvidedImage() {
-  elements.testImage.style.display = "block";
-  elements.video.style.display = "none";
-  if (!elements.testImage.complete) {
-    await new Promise((resolve) => {
-      elements.testImage.onload = resolve;
-    });
+  elements.video.style.display = 'none';
+  elements.startCamera.disabled = false;
+  elements.stopCamera.disabled = true;
+  elements.analyzeFrame.disabled = true;
+  if (sourceMode === 'camera') {
+    sourceMode = null;
+    elements.canvas.getContext('2d').clearRect(0, 0, elements.canvas.width, elements.canvas.height);
   }
-  await detectFrom(elements.testImage);
+  setStatus('Caméra arrêtée. Les ressources ont été libérées.', 'info');
 }
 
-async function loadImageFromUrl() {
-  const imageUrl = sanitizeImageUrl(elements.imageUrlInput.value.trim());
-  if (!imageUrl) {
-    setStatus("Saisissez une URL d'image valide.");
+function importImage(event) {
+  const file = event.target.files[0];
+  if (!file || !file.type.startsWith('image/')) {
+    setStatus('Sélectionnez un fichier image valide.', 'error');
     return;
   }
-
-  elements.testImage.style.display = "block";
-  elements.video.style.display = "none";
-  elements.testImage.crossOrigin = "anonymous";
-
-  await new Promise((resolve) => {
-    elements.testImage.onload = () => {
-      setStatus("Image URL chargée. Prêt pour l'analyse.");
-      resolve();
-    };
-    elements.testImage.onerror = () => {
-      setStatus("Échec de chargement de l'image URL (vérifiez le lien/CORS).");
-      resolve();
-    };
-    elements.testImage.src = imageUrl;
-  });
+  stopCamera();
+  if (sourceObjectUrl) URL.revokeObjectURL(sourceObjectUrl);
+  sourceObjectUrl = URL.createObjectURL(file);
+  elements.image.onload = () => {
+    elements.image.style.display = 'block';
+    sourceMode = 'image';
+    elements.analyzeImage.disabled = !model;
+    setStatus('Image locale chargée. Elle reste dans votre navigateur.', 'success');
+  };
+  elements.image.onerror = () => setStatus('Cette image ne peut pas être lue.', 'error');
+  elements.image.src = sourceObjectUrl;
 }
 
-function bindEvents() {
-  elements.startCameraBtn.addEventListener("click", startCamera);
-  elements.stopCameraBtn.addEventListener("click", stopCamera);
-  elements.analyzeFrameBtn.addEventListener("click", () => detectFrom(elements.video));
-  elements.analyzeImageBtn.addEventListener("click", analyzeProvidedImage);
-  elements.loadImageUrlBtn.addEventListener("click", loadImageFromUrl);
-  elements.generateReportBtn.addEventListener("click", () => buildReport(currentDetections));
-  elements.thresholdRange.addEventListener("input", updateThresholdLabel);
+function refreshAudit() {
+  if (analysisState !== 'unavailable') renderDetections();
 }
+
+elements.startCamera.addEventListener('click', startCamera);
+elements.stopCamera.addEventListener('click', stopCamera);
+elements.analyzeFrame.addEventListener('click', () => analyzeSource(elements.video, 'Image capturée depuis la caméra'));
+elements.analyzeImage.addEventListener('click', () => analyzeSource(elements.image, 'Image locale importée'));
+elements.imageInput.addEventListener('change', importImage);
+elements.threshold.addEventListener('input', () => {
+  updateThresholdLabel();
+  if (sourceMode === 'camera') drawDetections(filterDetections(), elements.video);
+  if (sourceMode === 'image') drawDetections(filterDetections(), elements.image);
+  refreshAudit();
+});
+document.querySelectorAll('[id^="expected-"]').forEach((input) => input.addEventListener('input', refreshAudit));
+elements.generateReport.addEventListener('click', renderDetections);
+elements.printReport.addEventListener('click', () => window.print());
+window.addEventListener('pagehide', stopCamera);
 
 updateThresholdLabel();
-bindEvents();
-updateUnsupportedList();
-updateDashboard([]);
-buildReport([]);
+renderUnsupported();
+renderDetections();
 loadModel();
