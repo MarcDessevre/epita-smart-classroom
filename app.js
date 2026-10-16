@@ -21,6 +21,7 @@ let analysisInProgress = false;
 let RawImage;
 const MODEL_NAME = 'Xenova/owlvit-base-patch32';
 const MODEL_LABELS = ['dining table', 'chair', 'laptop', 'tv', 'blackboard', 'whiteboard', 'window', 'person'];
+const HUMAN_BLOCK_MESSAGE = 'Can not analyse the image, there is a human being on the image';
 
 function setStatus(message, type = 'info') {
   elements.status.textContent = message;
@@ -162,7 +163,7 @@ function updateReport(auditRows, dashboard) {
       ? `- ${row.label} : attendu ${row.expected}, observation indisponible (${row.status}).`
       : `- ${row.label} : attendu ${row.expected}, détecté ${row.detected}, écart ${row.delta == null ? 'non calculable' : row.delta}. ${row.status}.`), '',
     `Catégories non prises en charge : ${AuditUtils.unsupportedCategories().length ? AuditUtils.unsupportedCategories().join(', ') : 'aucune parmi les catégories configurées.'}`,
-    'Limites : OWL-ViT peut produire des faux positifs ou faux négatifs; les personnes sont ignorées et aucune image n’est enregistrée ni envoyée.',
+    'Limites : OWL-ViT peut produire des faux positifs ou faux négatifs; toute image où une personne est détectée est refusée et aucune image n’est enregistrée ni envoyée.',
     'Recommandations : multiplier les angles de vue et confirmer chaque écart par un contrôle humain.'
   ].flat();
   elements.report.textContent = lines.join('\n');
@@ -191,6 +192,16 @@ async function analyzeSource(source, label) {
       score: prediction.score,
       bbox: [prediction.box.xmin, prediction.box.ymin, prediction.box.xmax - prediction.box.xmin, prediction.box.ymax - prediction.box.ymin]
     }));
+    if (rawDetections.some((prediction) => prediction.class === 'person')) {
+      analysisState = 'unavailable';
+      analysisLabel = label;
+      rawDetections = [];
+      currentDetections = [];
+      elements.canvas.getContext('2d').clearRect(0, 0, elements.canvas.width, elements.canvas.height);
+      renderDetections();
+      setStatus(HUMAN_BLOCK_MESSAGE, 'error');
+      return;
+    }
     analysisState = rawDetections.some((prediction) => prediction.class !== 'person') ? 'complete' : 'empty';
     analysisLabel = label;
     drawDetections(filterDetections(), source);
