@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 const elements = {
   video: $('video'), image: $('testImage'), canvas: $('overlayCanvas'),
   startCamera: $('startCameraBtn'), stopCamera: $('stopCameraBtn'),
+    switchCamera: $('switchCameraBtn'), 
   analyzeFrame: $('analyzeFrameBtn'), analyzeImage: $('analyzeImageBtn'),
   imageInput: $('imageInput'), threshold: $('thresholdRange'), thresholdValue: $('thresholdValue'),
   status: $('status'), detections: $('detectionsList'), unsupported: $('unsupportedList'),
@@ -22,7 +23,8 @@ let RawImage;
 const MODEL_NAME = 'Xenova/owlvit-base-patch32';
 const MODEL_LABELS = ['a classroom table or desk', 'a classroom chair', 'a laptop computer', 'a television screen', 'a blackboard', 'a whiteboard', 'a classroom window', 'a glass window', 'a school window', 'a person'];
 const HUMAN_BLOCK_MESSAGE = 'Can not analyse the image, there is a human being on the image';
-const HUMAN_BLOCK_THRESHOLD = 0.5;
+const HUMAN_BLOCK_THRESHOLD = 0.4;
+let cameraFacingMode = 'environment';
 
 function setStatus(message, type = 'info') {
   elements.status.textContent = message;
@@ -274,12 +276,13 @@ async function startCamera() {
     return;
   }
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: cameraFacingMode } }, audio: false });
     elements.video.srcObject = stream;
     elements.video.style.display = 'block';
     elements.image.style.display = 'none';
     sourceMode = 'camera';
     elements.startCamera.disabled = true;
+    elements.switchCamera.disabled = false;
     elements.stopCamera.disabled = false;
     elements.analyzeFrame.disabled = !model;
     setStatus('Caméra active. Cadrez uniquement le mobilier et les équipements.', 'success');
@@ -295,6 +298,7 @@ function stopCamera() {
   elements.video.srcObject = null;
   elements.video.style.display = 'none';
   elements.startCamera.disabled = false;
+  elements.switchCamera.disabled = true;
   elements.stopCamera.disabled = true;
   elements.analyzeFrame.disabled = true;
   if (sourceMode === 'camera') {
@@ -302,6 +306,13 @@ function stopCamera() {
     elements.canvas.getContext('2d').clearRect(0, 0, elements.canvas.width, elements.canvas.height);
   }
   setStatus('Caméra arrêtée. Les ressources ont été libérées.', 'info');
+}
+
+async function switchCamera() {
+  if (!stream) return;
+  cameraFacingMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
+  stopCamera();
+  await startCamera();
 }
 
 function importImage(event) {
@@ -328,6 +339,7 @@ function refreshAudit() {
 }
 
 elements.startCamera.addEventListener('click', startCamera);
+elements.switchCamera.addEventListener('click', switchCamera);
 elements.stopCamera.addEventListener('click', stopCamera);
 elements.analyzeFrame.addEventListener('click', () => analyzeSource(elements.video, 'Image capturée depuis la caméra'));
 elements.analyzeImage.addEventListener('click', () => analyzeSource(elements.image, 'Image locale importée'));
