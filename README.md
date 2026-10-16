@@ -17,7 +17,7 @@ Puis ouvrez `http://localhost:8080`.
 
 - Interface d'accueil et d'audit (caméra, résultats, tableau de bord, rapport).
 - Démarrage/arrêt webcam.
-- Analyse d'image webcam ou d'image de test (upload).
+- Analyse d'image webcam ou d'image de test fournie dans l'application.
 - Affichage des catégories détectées, scores de confiance, cadres de détection, comptage par catégorie.
 - Seuil de confiance paramétrable.
 - Configuration théorique modifiable (tables, chaises, tableau, laptops, fenêtres, écrans).
@@ -44,7 +44,7 @@ Puis ouvrez `http://localhost:8080`.
 | US2 | Démarrer/arrêter la webcam depuis l'interface | Haute | Terminé |
 | US3 | Charger le modèle COCO-SSD dans le navigateur | Haute | Terminé |
 | US4 | Analyser image webcam et afficher cadres + scores | Haute | Terminé |
-| US5 | Permettre l'analyse d'une image de test uploadée | Moyenne | Terminé |
+| US5 | Permettre l'analyse d'une image de test fournie | Moyenne | Terminé |
 | US6 | Configurer un seuil de confiance dynamique | Haute | Terminé |
 | US7 | Comparer attendu vs détecté pour catégories vérifiables | Haute | Terminé |
 | US8 | Afficher les catégories non prises en charge | Haute | Terminé |

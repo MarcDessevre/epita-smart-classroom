@@ -3,7 +3,6 @@ const elements = {
   canvas: document.getElementById("overlayCanvas"),
   ctx: document.getElementById("overlayCanvas").getContext("2d"),
   testImage: document.getElementById("testImage"),
-  testImageInput: document.getElementById("testImageInput"),
   startCameraBtn: document.getElementById("startCameraBtn"),
   stopCameraBtn: document.getElementById("stopCameraBtn"),
   analyzeFrameBtn: document.getElementById("analyzeFrameBtn"),
@@ -47,11 +46,11 @@ const requiredLabels = {
 let model;
 let currentDetections = [];
 let stream;
-let testImageFileUrl;
 
 async function loadModel() {
   try {
     model = await cocoSsd.load();
+    elements.analyzeImageBtn.disabled = false;
     setStatus("Modèle chargé. Prêt pour l'analyse.");
   } catch (error) {
     setStatus(`Échec du chargement du modèle: ${error.message}`);
@@ -324,30 +323,22 @@ function stopCamera() {
   setStatus("Caméra arrêtée.");
 }
 
-function handleTestImageSelection(event) {
-  const file = event.target.files?.[0];
-  elements.analyzeImageBtn.disabled = !file;
-
-  if (!file) {
-    return;
-  }
-
-  if (testImageFileUrl) {
-    URL.revokeObjectURL(testImageFileUrl);
-  }
-
-  testImageFileUrl = URL.createObjectURL(file);
-  elements.testImage.src = testImageFileUrl;
+async function analyzeProvidedImage() {
   elements.testImage.style.display = "block";
   elements.video.style.display = "none";
+  if (!elements.testImage.complete) {
+    await new Promise((resolve) => {
+      elements.testImage.onload = resolve;
+    });
+  }
+  await detectFrom(elements.testImage);
 }
 
 function bindEvents() {
   elements.startCameraBtn.addEventListener("click", startCamera);
   elements.stopCameraBtn.addEventListener("click", stopCamera);
   elements.analyzeFrameBtn.addEventListener("click", () => detectFrom(elements.video));
-  elements.analyzeImageBtn.addEventListener("click", () => detectFrom(elements.testImage));
-  elements.testImageInput.addEventListener("change", handleTestImageSelection);
+  elements.analyzeImageBtn.addEventListener("click", analyzeProvidedImage);
   elements.generateReportBtn.addEventListener("click", () => buildReport(currentDetections));
   elements.thresholdRange.addEventListener("input", updateThresholdLabel);
 }

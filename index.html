@@ -25,19 +25,15 @@
           <button id="stopCameraBtn" disabled>Arrêter la caméra</button>
           <button id="analyzeFrameBtn" disabled>Analyser l'image courante</button>
         </div>
-        <label>
-          Image de test :
-          <input id="testImageInput" type="file" accept="image/*" />
-        </label>
         <div class="actions">
-          <button id="analyzeImageBtn" disabled>Analyser l'image de test</button>
+          <button id="analyzeImageBtn" disabled>Analyser l'image de test fournie</button>
         </div>
         <label for="thresholdRange">Seuil de confiance : <span id="thresholdValue">0.50</span></label>
         <input id="thresholdRange" type="range" min="0.1" max="0.95" step="0.05" value="0.5" />
 
         <div class="viewer">
           <video id="video" autoplay playsinline muted></video>
-          <img id="testImage" alt="Aperçu image de test" />
+          <img id="testImage" alt="Image de test fournie" src="test-image.png" />
           <canvas id="overlayCanvas"></canvas>
         </div>
         <p id="status">Chargement du modèle…</p>
