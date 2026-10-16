@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { aggregateDetections, buildAudit, computeDashboard, buildDefaultExpected } = require('../utils.js');
+const { aggregateDetections, buildAudit, computeDashboard, buildDefaultExpected, normalizeClass } = require('../utils.js');
 
 test('aggregateDetections ignores person and applies threshold', () => {
   const predictions = [
@@ -25,6 +25,8 @@ test('normalizeClass maps OWL-ViT board and window labels', () => {
   assert.equal(blackboard.verifiable, true);
   assert.equal(blackboard.status, 'conforme');
   assert.equal(window.status, 'surplus');
+  assert.equal(normalizeClass('a classroom table or desk'), 'table');
+  assert.equal(normalizeClass('a whiteboard'), 'blackboard');
 });
 
 test('computeDashboard returns gaps and global status', () => {

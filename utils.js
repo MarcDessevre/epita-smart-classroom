@@ -1,11 +1,11 @@
 (function (global) {
   const CATEGORY_DEFS = [
-    { id: 'table', label: 'Tables/Bureaux', modelClass: 'dining table', supported: true, expected: 10 },
-    { id: 'chair', label: 'Chaises', modelClass: 'chair', supported: true, expected: 20 },
-    { id: 'blackboard', label: 'Tableaux', modelClass: ['blackboard', 'whiteboard'], supported: true, expected: 1 },
-    { id: 'laptop', label: 'Ordinateurs portables', modelClass: 'laptop', supported: true, expected: 5 },
-    { id: 'screen', label: 'Écrans', modelClass: 'tv', supported: true, expected: 0 },
-    { id: 'window', label: 'Fenêtres', modelClass: 'window', supported: true, expected: 0 }
+    { id: 'table', label: 'Tables/Bureaux', modelClass: ['dining table', 'a classroom table or desk'], supported: true, expected: 10 },
+    { id: 'chair', label: 'Chaises', modelClass: ['chair', 'a classroom chair'], supported: true, expected: 20 },
+    { id: 'blackboard', label: 'Tableaux', modelClass: ['blackboard', 'whiteboard', 'a blackboard', 'a whiteboard'], supported: true, expected: 1 },
+    { id: 'laptop', label: 'Ordinateurs portables', modelClass: ['laptop', 'a laptop computer'], supported: true, expected: 5 },
+    { id: 'screen', label: 'Écrans', modelClass: ['tv', 'a television screen'], supported: true, expected: 0 },
+    { id: 'window', label: 'Fenêtres', modelClass: ['window', 'a window'], supported: true, expected: 0 }
   ];
 
   function buildDefaultExpected() {

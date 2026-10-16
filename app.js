@@ -20,8 +20,9 @@ let analysisLabel = 'Aucune source analysée';
 let analysisInProgress = false;
 let RawImage;
 const MODEL_NAME = 'Xenova/owlvit-base-patch32';
-const MODEL_LABELS = ['dining table', 'chair', 'laptop', 'tv', 'blackboard', 'whiteboard', 'window', 'person'];
+const MODEL_LABELS = ['a classroom table or desk', 'a classroom chair', 'a laptop computer', 'a television screen', 'a blackboard', 'a whiteboard', 'a window', 'a person'];
 const HUMAN_BLOCK_MESSAGE = 'Can not analyse the image, there is a human being on the image';
+const HUMAN_BLOCK_THRESHOLD = 0.5;
 
 function setStatus(message, type = 'info') {
   elements.status.textContent = message;
@@ -44,7 +45,11 @@ function getExpectedConfig() {
 }
 
 function filterDetections() {
-  return rawDetections.filter((prediction) => prediction.class !== 'person' && prediction.score >= getThreshold());
+  return rawDetections.filter((prediction) => !isHumanPrediction(prediction) && prediction.score >= getThreshold());
+}
+
+function isHumanPrediction(prediction) {
+  return prediction.class === 'person' || prediction.class === 'a person';
 }
 
 function getSourceDimensions(source) {
@@ -57,7 +62,7 @@ function resizeCanvas(source) {
   elements.canvas.height = Math.max(1, rect.height);
 }
 
-function drawDetections(detections, source) {
+function drawDetections(detections, source, color = '#a6e22e') {
   resizeCanvas(source);
   const context = elements.canvas.getContext('2d');
   context.clearRect(0, 0, elements.canvas.width, elements.canvas.height);
@@ -75,7 +80,7 @@ function drawDetections(detections, source) {
     const displayWidth = boxWidth * scale;
     const displayHeight = boxHeight * scale;
     const label = `${prediction.class} ${Math.round(prediction.score * 100)}%`;
-    context.strokeStyle = '#a6e22e';
+    context.strokeStyle = color;
     context.strokeRect(displayX, displayY, displayWidth, displayHeight);
     context.fillStyle = '#101820';
     context.fillRect(displayX, Math.max(0, displayY - 20), context.measureText(label).width + 10, 20);
@@ -192,9 +197,11 @@ async function analyzeSource(source, label) {
       score: prediction.score,
       bbox: [prediction.box.xmin, prediction.box.ymin, prediction.box.xmax - prediction.box.xmin, prediction.box.ymax - prediction.box.ymin]
     }));
-    if (rawDetections.some((prediction) => prediction.class === 'person')) {
+    const humanDetections = rawDetections.filter((prediction) => isHumanPrediction(prediction) && prediction.score >= HUMAN_BLOCK_THRESHOLD);
+    if (humanDetections.length) {
       analysisState = 'unavailable';
       analysisLabel = label;
+      drawDetections(humanDetections, source, '#e87861');
       rawDetections = [];
       currentDetections = [];
       elements.canvas.getContext('2d').clearRect(0, 0, elements.canvas.width, elements.canvas.height);
