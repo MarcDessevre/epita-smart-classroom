@@ -20,7 +20,7 @@ let analysisLabel = 'Aucune source analysée';
 let analysisInProgress = false;
 let RawImage;
 const MODEL_NAME = 'Xenova/owlvit-base-patch32';
-const MODEL_LABELS = ['a classroom table or desk', 'a classroom chair', 'a laptop computer', 'a television screen', 'a blackboard', 'a whiteboard', 'a window', 'a person'];
+const MODEL_LABELS = ['a classroom table or desk', 'a classroom chair', 'a laptop computer', 'a television screen', 'a blackboard', 'a whiteboard', 'a classroom window', 'a glass window', 'a school window', 'a person'];
 const HUMAN_BLOCK_MESSAGE = 'Can not analyse the image, there is a human being on the image';
 const HUMAN_BLOCK_THRESHOLD = 0.5;
 
@@ -46,6 +46,27 @@ function getExpectedConfig() {
 
 function filterDetections() {
   return rawDetections.filter((prediction) => !isHumanPrediction(prediction) && prediction.score >= getThreshold());
+}
+
+function intersectionOverUnion(first, second) {
+  const [firstX, firstY, firstWidth, firstHeight] = first;
+  const [secondX, secondY, secondWidth, secondHeight] = second;
+  const intersectionWidth = Math.max(0, Math.min(firstX + firstWidth, secondX + secondWidth) - Math.max(firstX, secondX));
+  const intersectionHeight = Math.max(0, Math.min(firstY + firstHeight, secondY + secondHeight) - Math.max(firstY, secondY));
+  const intersection = intersectionWidth * intersectionHeight;
+  const union = firstWidth * firstHeight + secondWidth * secondHeight - intersection;
+  return union ? intersection / union : 0;
+}
+
+function deduplicatePredictions(predictions) {
+  const kept = [];
+  [...predictions].sort((first, second) => second.score - first.score).forEach((prediction) => {
+    const category = AuditUtils.normalizeClass(prediction.class);
+    const duplicate = category && kept.some((other) => AuditUtils.normalizeClass(other.class) === category
+      && intersectionOverUnion(prediction.bbox, other.bbox) >= 0.4);
+    if (!duplicate) kept.push(prediction);
+  });
+  return kept;
 }
 
 function isHumanPrediction(prediction) {
@@ -192,11 +213,11 @@ async function analyzeSource(source, label) {
     sourceCanvas.height = height;
     sourceCanvas.getContext('2d').drawImage(source, 0, 0, width, height);
     const predictions = await model(await RawImage.fromCanvas(sourceCanvas), MODEL_LABELS, { threshold: 0.01 });
-    rawDetections = predictions.map((prediction) => ({
+    rawDetections = deduplicatePredictions(predictions.map((prediction) => ({
       class: prediction.label,
       score: prediction.score,
       bbox: [prediction.box.xmin, prediction.box.ymin, prediction.box.xmax - prediction.box.xmin, prediction.box.ymax - prediction.box.ymin]
-    }));
+    })));
     const humanDetections = rawDetections.filter((prediction) => isHumanPrediction(prediction) && prediction.score >= HUMAN_BLOCK_THRESHOLD);
     if (humanDetections.length) {
       analysisState = 'unavailable';

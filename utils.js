@@ -5,7 +5,7 @@
     { id: 'blackboard', label: 'Tableaux', modelClass: ['blackboard', 'whiteboard', 'a blackboard', 'a whiteboard'], supported: true, expected: 1 },
     { id: 'laptop', label: 'Ordinateurs portables', modelClass: ['laptop', 'a laptop computer'], supported: true, expected: 5 },
     { id: 'screen', label: 'Écrans', modelClass: ['tv', 'a television screen'], supported: true, expected: 0 },
-    { id: 'window', label: 'Fenêtres', modelClass: ['window', 'a window'], supported: true, expected: 0 }
+    { id: 'window', label: 'Fenêtres', modelClass: ['window', 'a window', 'a classroom window', 'a glass window', 'a school window'], supported: true, expected: 0 }
   ];
 
   function buildDefaultExpected() {

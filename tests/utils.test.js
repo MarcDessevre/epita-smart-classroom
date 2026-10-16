@@ -27,6 +27,7 @@ test('normalizeClass maps OWL-ViT board and window labels', () => {
   assert.equal(window.status, 'surplus');
   assert.equal(normalizeClass('a classroom table or desk'), 'table');
   assert.equal(normalizeClass('a whiteboard'), 'blackboard');
+  assert.equal(normalizeClass('a classroom window'), 'window');
 });
 
 test('computeDashboard returns gaps and global status', () => {
