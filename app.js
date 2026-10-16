@@ -72,6 +72,18 @@ function getEffectiveThreshold(detectionClass, threshold) {
   return threshold;
 }
 
+function sanitizeImageUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 function intersectionOverUnion(a, b) {
   const [ax, ay, aw, ah] = a;
   const [bx, by, bw, bh] = b;
@@ -471,7 +483,7 @@ async function analyzeProvidedImage() {
 }
 
 async function loadImageFromUrl() {
-  const imageUrl = elements.imageUrlInput.value.trim();
+  const imageUrl = sanitizeImageUrl(elements.imageUrlInput.value.trim());
   if (!imageUrl) {
     setStatus("Saisissez une URL d'image valide.");
     return;
