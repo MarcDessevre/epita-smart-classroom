@@ -7,6 +7,8 @@ const elements = {
   stopCameraBtn: document.getElementById("stopCameraBtn"),
   analyzeFrameBtn: document.getElementById("analyzeFrameBtn"),
   analyzeImageBtn: document.getElementById("analyzeImageBtn"),
+  imageUrlInput: document.getElementById("imageUrlInput"),
+  loadImageUrlBtn: document.getElementById("loadImageUrlBtn"),
   thresholdRange: document.getElementById("thresholdRange"),
   thresholdValue: document.getElementById("thresholdValue"),
   status: document.getElementById("status"),
@@ -46,6 +48,140 @@ const requiredLabels = {
 let model;
 let currentDetections = [];
 let stream;
+const MODEL_MAX_BOXES = 100;
+const MODEL_MIN_SCORE = 0.05;
+const CHAIR_MIN_THRESHOLD = 0.2;
+const TILE_IOU_THRESHOLD = 0.45;
+const TILE_SCALE = 0.7;
+
+function isStillImage(element) {
+  return element instanceof HTMLImageElement;
+}
+
+function getSourceDimensions(sourceElement) {
+  return {
+    width: sourceElement.videoWidth || sourceElement.naturalWidth || 0,
+    height: sourceElement.videoHeight || sourceElement.naturalHeight || 0
+  };
+}
+
+function getEffectiveThreshold(detectionClass, threshold) {
+  if (detectionClass === "chair") {
+    return Math.min(threshold, CHAIR_MIN_THRESHOLD);
+  }
+  return threshold;
+}
+
+function intersectionOverUnion(a, b) {
+  const [ax, ay, aw, ah] = a;
+  const [bx, by, bw, bh] = b;
+  const a2x = ax + aw;
+  const a2y = ay + ah;
+  const b2x = bx + bw;
+  const b2y = by + bh;
+
+  const interX1 = Math.max(ax, bx);
+  const interY1 = Math.max(ay, by);
+  const interX2 = Math.min(a2x, b2x);
+  const interY2 = Math.min(a2y, b2y);
+  const interW = Math.max(0, interX2 - interX1);
+  const interH = Math.max(0, interY2 - interY1);
+  const interArea = interW * interH;
+  if (interArea === 0) {
+    return 0;
+  }
+  const areaA = aw * ah;
+  const areaB = bw * bh;
+  return interArea / (areaA + areaB - interArea);
+}
+
+function deduplicateDetections(detections, iouThreshold = TILE_IOU_THRESHOLD) {
+  const grouped = detections.reduce((acc, det) => {
+    if (!acc[det.class]) {
+      acc[det.class] = [];
+    }
+    acc[det.class].push(det);
+    return acc;
+  }, {});
+
+  const merged = [];
+  Object.values(grouped).forEach((group) => {
+    const sorted = [...group].sort((a, b) => b.score - a.score);
+    const kept = [];
+
+    while (sorted.length > 0) {
+      const best = sorted.shift();
+      kept.push(best);
+      for (let i = sorted.length - 1; i >= 0; i -= 1) {
+        if (intersectionOverUnion(best.bbox, sorted[i].bbox) >= iouThreshold) {
+          sorted.splice(i, 1);
+        }
+      }
+    }
+    merged.push(...kept);
+  });
+
+  return merged;
+}
+
+function createImageTiles(width, height) {
+  const tileWidth = Math.max(1, Math.floor(width * TILE_SCALE));
+  const tileHeight = Math.max(1, Math.floor(height * TILE_SCALE));
+  const xStarts = [...new Set([0, Math.max(0, Math.floor((width - tileWidth) / 2)), Math.max(0, width - tileWidth)])];
+  const yStarts = [...new Set([0, Math.max(0, Math.floor((height - tileHeight) / 2)), Math.max(0, height - tileHeight)])];
+  const tiles = [];
+
+  yStarts.forEach((y) => {
+    xStarts.forEach((x) => {
+      tiles.push({ x, y, width: tileWidth, height: tileHeight });
+    });
+  });
+
+  return tiles;
+}
+
+async function detectOnTile(sourceImage, tile) {
+  const tileCanvas = document.createElement("canvas");
+  tileCanvas.width = tile.width;
+  tileCanvas.height = tile.height;
+  const tileCtx = tileCanvas.getContext("2d");
+  tileCtx.drawImage(
+    sourceImage,
+    tile.x,
+    tile.y,
+    tile.width,
+    tile.height,
+    0,
+    0,
+    tile.width,
+    tile.height
+  );
+
+  const tileDetections = await model.detect(tileCanvas, MODEL_MAX_BOXES, MODEL_MIN_SCORE);
+  return tileDetections.map((det) => ({
+    ...det,
+    bbox: [det.bbox[0] + tile.x, det.bbox[1] + tile.y, det.bbox[2], det.bbox[3]]
+  }));
+}
+
+async function collectRawDetections(sourceElement) {
+  const baseDetections = await model.detect(sourceElement, MODEL_MAX_BOXES, MODEL_MIN_SCORE);
+  const peopleInFrame = baseDetections.filter((det) => det.class === "person").length;
+
+  if (!isStillImage(sourceElement)) {
+    return { rawDetections: baseDetections, peopleInFrame };
+  }
+
+  const { width, height } = getSourceDimensions(sourceElement);
+  if (!width || !height) {
+    return { rawDetections: baseDetections, peopleInFrame };
+  }
+
+  const tiles = createImageTiles(width, height);
+  const tiledDetections = await Promise.all(tiles.map((tile) => detectOnTile(sourceElement, tile)));
+  const merged = deduplicateDetections([...baseDetections, ...tiledDetections.flat()]);
+  return { rawDetections: merged, peopleInFrame };
+}
 
 async function loadModel() {
   try {
@@ -277,11 +413,11 @@ async function detectFrom(sourceElement) {
   }
 
   const threshold = getThreshold();
-  const rawDetections = await model.detect(sourceElement);
-  const detections = rawDetections.filter(
-    (det) => det.score >= threshold && det.class !== "person"
-  );
-  const peopleInFrame = rawDetections.filter((det) => det.class === "person").length;
+  const { rawDetections, peopleInFrame } = await collectRawDetections(sourceElement);
+  const detections = rawDetections.filter((det) => {
+    const effectiveThreshold = getEffectiveThreshold(det.class, threshold);
+    return det.class !== "person" && det.score >= effectiveThreshold;
+  });
 
   currentDetections = detections;
   drawDetections(detections, sourceElement);
@@ -291,7 +427,7 @@ async function detectFrom(sourceElement) {
   buildReport(detections);
 
   setStatus(
-    `${detections.length} objet(s) détecté(s) (personnes ignorées: ${peopleInFrame}). Seuil: ${threshold.toFixed(2)}.`
+    `${detections.length} objet(s) détecté(s) (personnes ignorées: ${peopleInFrame}). Seuil global: ${threshold.toFixed(2)} (chaises min ${Math.min(threshold, CHAIR_MIN_THRESHOLD).toFixed(2)}).`
   );
 }
 
@@ -334,11 +470,36 @@ async function analyzeProvidedImage() {
   await detectFrom(elements.testImage);
 }
 
+async function loadImageFromUrl() {
+  const imageUrl = elements.imageUrlInput.value.trim();
+  if (!imageUrl) {
+    setStatus("Saisissez une URL d'image valide.");
+    return;
+  }
+
+  elements.testImage.style.display = "block";
+  elements.video.style.display = "none";
+  elements.testImage.crossOrigin = "anonymous";
+
+  await new Promise((resolve) => {
+    elements.testImage.onload = () => {
+      setStatus("Image URL chargée. Prêt pour l'analyse.");
+      resolve();
+    };
+    elements.testImage.onerror = () => {
+      setStatus("Échec de chargement de l'image URL (vérifiez le lien/CORS).");
+      resolve();
+    };
+    elements.testImage.src = imageUrl;
+  });
+}
+
 function bindEvents() {
   elements.startCameraBtn.addEventListener("click", startCamera);
   elements.stopCameraBtn.addEventListener("click", stopCamera);
   elements.analyzeFrameBtn.addEventListener("click", () => detectFrom(elements.video));
   elements.analyzeImageBtn.addEventListener("click", analyzeProvidedImage);
+  elements.loadImageUrlBtn.addEventListener("click", loadImageFromUrl);
   elements.generateReportBtn.addEventListener("click", () => buildReport(currentDetections));
   elements.thresholdRange.addEventListener("input", updateThresholdLabel);
 }

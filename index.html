@@ -28,8 +28,18 @@
         <div class="actions">
           <button id="analyzeImageBtn" disabled>Analyser l'image de test fournie</button>
         </div>
-        <label for="thresholdRange">Seuil de confiance : <span id="thresholdValue">0.50</span></label>
-        <input id="thresholdRange" type="range" min="0.1" max="0.95" step="0.05" value="0.5" />
+        <label for="imageUrlInput">URL image de test :</label>
+        <div class="actions">
+          <input
+            id="imageUrlInput"
+            type="url"
+            value="https://github.com/user-attachments/assets/46113322-222a-41ea-a217-2d004d5827fa"
+            placeholder="https://..."
+          />
+          <button id="loadImageUrlBtn">Charger l'image URL</button>
+        </div>
+        <label for="thresholdRange">Seuil de confiance : <span id="thresholdValue">0.35</span></label>
+        <input id="thresholdRange" type="range" min="0.1" max="0.95" step="0.05" value="0.35" />
 
         <div class="viewer">
           <video id="video" autoplay playsinline muted></video>

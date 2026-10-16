@@ -18,6 +18,7 @@ Puis ouvrez `http://localhost:8080`.
 - Interface d'accueil et d'audit (caméra, résultats, tableau de bord, rapport).
 - Démarrage/arrêt webcam.
 - Analyse d'image webcam ou d'image de test fournie dans l'application.
+- Chargement optionnel d'une image de test via URL (ex. GitHub user-attachments).
 - Affichage des catégories détectées, scores de confiance, cadres de détection, comptage par catégorie.
 - Seuil de confiance paramétrable.
 - Configuration théorique modifiable (tables, chaises, tableau, laptops, fenêtres, écrans).
@@ -25,6 +26,7 @@ Puis ouvrez `http://localhost:8080`.
 - Catégories non prises en charge affichées explicitement.
 - Exclusion des personnes (`person`) de l'analyse.
 - Rapport d'audit généré à partir des résultats réels.
+- Renforcement de la détection sur image fixe via analyse multi-zones + déduplication (meilleur rappel sur les chaises).
 
 ## Mini-dossier de gestion de projet
 
