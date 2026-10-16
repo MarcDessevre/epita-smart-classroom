@@ -4,85 +4,84 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EPITA Smart Classroom</title>
-    <link rel="stylesheet" href="/styles.css" />
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
   </head>
   <body>
-    <header class="hero">
+    <header>
       <h1>EPITA Smart Classroom</h1>
       <p>
-        Audit visuel d'une salle de cours (mobilier et équipements) à partir d'une webcam ou d'une image.
-      </p>
-      <p class="note">
-        Confidentialité : le traitement reste dans le navigateur. Les personnes détectées sont ignorées et jamais analysées.
-      </p>
-      <p class="note warning">
-        Limites : COCO-SSD ne reconnaît pas nativement le tableau ni les fenêtres ; ces catégories sont signalées comme non vérifiables.
+        Application d'audit visuel de salle : détection d'équipements, comparaison à une
+        configuration attendue et génération d'un rapport lisible.
       </p>
     </header>
 
-    <main class="layout">
-      <section class="card">
-        <h2>Capture et analyse</h2>
-        <div class="controls">
+    <main>
+      <section class="panel">
+        <h2>Caméra et image de test</h2>
+        <div class="actions">
           <button id="startCameraBtn">Démarrer la caméra</button>
           <button id="stopCameraBtn" disabled>Arrêter la caméra</button>
-          <button id="captureBtn" disabled>Capturer et analyser</button>
-          <label class="file-label" for="imageInput">Charger une image</label>
-          <input id="imageInput" type="file" accept="image/*" />
+          <button id="analyzeFrameBtn" disabled>Analyser l'image courante</button>
         </div>
-        <div class="threshold-row">
-          <label for="confidenceThreshold">Seuil de confiance : <span id="thresholdValue">0.50</span></label>
-          <input id="confidenceThreshold" type="range" min="0.1" max="0.95" step="0.05" value="0.5" />
+        <div class="actions">
+          <button id="analyzeImageBtn" disabled>Analyser l'image de test fournie</button>
         </div>
-        <p id="statusMessage" class="status">Chargement du modèle IA…</p>
+        <label for="imageUrlInput">URL image de test :</label>
+        <div class="actions">
+          <input
+            id="imageUrlInput"
+            type="url"
+            value="https://github.com/user-attachments/assets/46113322-222a-41ea-a217-2d004d5827fa"
+            placeholder="https://..."
+          />
+          <button id="loadImageUrlBtn">Charger l'image URL</button>
+        </div>
+        <label for="thresholdRange">Seuil de confiance : <span id="thresholdValue">0.35</span></label>
+        <input id="thresholdRange" type="range" min="0.1" max="0.95" step="0.05" value="0.35" />
 
-        <div class="preview-wrap">
+        <div class="viewer">
           <video id="video" autoplay playsinline muted></video>
+          <img id="testImage" alt="Image de test fournie" src="test-image.png" />
           <canvas id="overlayCanvas"></canvas>
         </div>
+        <p id="status">Chargement du modèle…</p>
       </section>
 
-      <section class="card">
-        <h2>Configuration théorique (modifiable)</h2>
-        <p class="note">Comparaison uniquement sur catégories vérifiables par le modèle.</p>
-        <div id="expectedConfig" class="config-grid"></div>
-      </section>
-
-      <section class="card">
-        <h2>Résultats de détection</h2>
-        <div id="resultsEmpty" class="empty">Aucune analyse effectuée pour le moment.</div>
-        <ul id="resultList" class="result-list"></ul>
-        <h3>Compteurs</h3>
-        <ul id="counterList" class="result-list"></ul>
-      </section>
-
-      <section class="card">
-        <h2>Tableau de bord</h2>
-        <div id="dashboard" class="kpis"></div>
-      </section>
-
-      <section class="card">
-        <h2>Audit comparatif</h2>
-        <div id="auditTableWrap" class="table-wrap"></div>
-        <p class="note">
-          Un objet non détecté n'est pas nécessairement absent : cadrage, masquage ou limites du modèle peuvent expliquer l'écart.
-        </p>
-      </section>
-
-      <section class="card">
-        <h2>Rapport d'audit</h2>
-        <div class="controls">
-          <button id="generateReportBtn">Générer le rapport</button>
-          <button id="printReportBtn" disabled>Imprimer</button>
-          <button id="downloadReportBtn" disabled>Télécharger (.txt)</button>
+      <section class="panel two-col">
+        <div>
+          <h2>Configuration théorique</h2>
+          <div class="config-grid">
+            <label>Tables/Bureaux attendus <input id="expectedTables" type="number" min="0" value="10" /></label>
+            <label>Chaises attendues <input id="expectedChairs" type="number" min="0" value="20" /></label>
+            <label>Tableaux attendus <input id="expectedBoards" type="number" min="0" value="1" /></label>
+            <label>Ordinateurs portables attendus <input id="expectedLaptops" type="number" min="0" value="5" /></label>
+            <label>Fenêtres attendues <input id="expectedWindows" type="number" min="0" value="0" /></label>
+            <label>Écrans attendus <input id="expectedScreens" type="number" min="0" value="0" /></label>
+          </div>
         </div>
-        <pre id="reportOutput" class="report">Le rapport apparaîtra ici.</pre>
+
+        <div>
+          <h2>Résultats de détection</h2>
+          <ul id="detectionsList"></ul>
+          <h3>Catégories non prises en charge</h3>
+          <ul id="unsupportedList"></ul>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Tableau de bord</h2>
+        <div class="dashboard" id="dashboard"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Rapport d'audit</h2>
+        <button id="generateReportBtn">Générer / actualiser le rapport</button>
+        <pre id="report"></pre>
       </section>
     </main>
 
-    <script src="/utils.js"></script>
-    <script src="/app.js"></script>
+    <script src="app.js"></script>
   </body>
 </html>
