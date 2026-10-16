@@ -57,7 +57,7 @@ Aucune mesure de précision n’est annoncée sans jeu de test annoté.
 
 ## Déploiement GitHub / Cloudflare Pages
 
-Le projet est statique et ne possède ni étape de compilation ni répertoire de sortie séparé. Pour Cloudflare Pages, sélectionner le dépôt GitHub, laisser la commande de build vide et utiliser `/` comme répertoire de sortie. Pour GitHub Pages, publier la racine du dépôt.
+Le projet est statique et ne possède ni étape de compilation ni répertoire de sortie séparé. Pour Cloudflare Workers avec `wrangler.json`, publier la racine avec `wrangler deploy`; `_worker.js` sert les assets et relaie uniquement les fichiers du modèle via `/hf/` afin d’éviter le problème CORS Hugging Face. Pour Cloudflare Pages, sélectionner le dépôt GitHub, laisser la commande de build vide et utiliser `/` comme répertoire de sortie; le dossier `functions/` fournit le même relais.
 
 Aucune URL publique n’est indiquée ici car aucun dépôt distant ni déploiement n’a été confirmé dans cet environnement.
 
