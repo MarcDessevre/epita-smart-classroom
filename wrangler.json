@@ -1,5 +1,7 @@
 {
   "name": "epita-smart-classroom",
-  "main": "app.js",
-  "compatibility_date": "2026-10-16"
+  "compatibility_date": "2026-10-16",
+  "assets": {
+    "directory": "."
+  }
 }
