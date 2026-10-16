@@ -1,0 +1,110 @@
+(function (global) {
+  const CATEGORY_DEFS = [
+    { id: 'table', label: 'Tables/Bureaux', cocoClass: 'dining table', supported: true, expected: 10 },
+    { id: 'chair', label: 'Chaises', cocoClass: 'chair', supported: true, expected: 20 },
+    { id: 'blackboard', label: 'Tableaux', cocoClass: null, supported: false, expected: 1 },
+    { id: 'laptop', label: 'Ordinateurs portables', cocoClass: 'laptop', supported: true, expected: 5 },
+    { id: 'screen', label: 'Écrans', cocoClass: 'tv', supported: true, expected: 0 },
+    { id: 'window', label: 'Fenêtres', cocoClass: null, supported: false, expected: 0 }
+  ];
+
+  function buildDefaultExpected() {
+    return CATEGORY_DEFS.reduce((acc, def) => {
+      acc[def.id] = def.expected;
+      return acc;
+    }, {});
+  }
+
+  function normalizeClass(predictedClass) {
+    const found = CATEGORY_DEFS.find((d) => d.cocoClass === predictedClass);
+    return found ? found.id : null;
+  }
+
+  function aggregateDetections(predictions, threshold) {
+    const filtered = predictions.filter((p) => p.class !== 'person' && p.score >= threshold);
+    const counts = {};
+    const normalizedDetections = [];
+
+    for (const prediction of filtered) {
+      const categoryId = normalizeClass(prediction.class);
+      if (!categoryId) {
+        continue;
+      }
+      counts[categoryId] = (counts[categoryId] || 0) + 1;
+      normalizedDetections.push({
+        id: categoryId,
+        label: CATEGORY_DEFS.find((d) => d.id === categoryId).label,
+        cocoClass: prediction.class,
+        score: prediction.score,
+        bbox: prediction.bbox
+      });
+    }
+
+    return { filtered, counts, normalizedDetections };
+  }
+
+  function buildAudit(expectedConfig, counts) {
+    return CATEGORY_DEFS.map((def) => {
+      const expected = Number(expectedConfig[def.id] || 0);
+      if (!def.supported) {
+        return {
+          id: def.id,
+          label: def.label,
+          expected,
+          detected: null,
+          delta: null,
+          status: 'non vérifiable',
+          verifiable: false
+        };
+      }
+
+      const detected = Number(counts[def.id] || 0);
+      const delta = detected - expected;
+      const status = delta === 0 ? 'conforme' : delta > 0 ? 'surplus' : 'manquant';
+
+      return {
+        id: def.id,
+        label: def.label,
+        expected,
+        detected,
+        delta,
+        status,
+        verifiable: true
+      };
+    });
+  }
+
+  function computeDashboard(auditRows, counts) {
+    const verifiable = auditRows.filter((r) => r.verifiable);
+    const gaps = verifiable.filter((r) => r.delta !== 0).length;
+    const totalDetected = Object.values(counts).reduce((sum, n) => sum + n, 0);
+    const recognizedCategories = Object.keys(counts).filter((k) => counts[k] > 0).length;
+
+    return {
+      totalDetected,
+      recognizedCategories,
+      verifiableRules: verifiable.length,
+      gaps,
+      globalStatus: gaps === 0 ? 'Conforme' : 'Écarts détectés'
+    };
+  }
+
+  function unsupportedCategories() {
+    return CATEGORY_DEFS.filter((d) => !d.supported).map((d) => d.label);
+  }
+
+  const api = {
+    CATEGORY_DEFS,
+    buildDefaultExpected,
+    normalizeClass,
+    aggregateDetections,
+    buildAudit,
+    computeDashboard,
+    unsupportedCategories
+  };
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+  }
+  global.AuditUtils = api;
+})(typeof window !== 'undefined' ? window : globalThis);
