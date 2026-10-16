@@ -159,9 +159,11 @@ function getAuditRows(counts, expectedConfig) {
 }
 
 function updateDetectionList(detections) {
-  elements.detectionsList.innerHTML = "";
+  elements.detectionsList.replaceChildren();
   if (detections.length === 0) {
-    elements.detectionsList.innerHTML = "<li>Aucune détection au-dessus du seuil.</li>";
+    const item = document.createElement("li");
+    item.textContent = "Aucune détection au-dessus du seuil.";
+    elements.detectionsList.appendChild(item);
     return;
   }
 
@@ -173,7 +175,7 @@ function updateDetectionList(detections) {
 }
 
 function updateUnsupportedList() {
-  elements.unsupportedList.innerHTML = "";
+  elements.unsupportedList.replaceChildren();
   unsupportedRequiredCategories.forEach((key) => {
     const item = document.createElement("li");
     item.textContent = `${requiredLabels[key]} (non reconnue par COCO-SSD)`;
@@ -199,11 +201,15 @@ function updateDashboard(detections) {
     ["Statut global", globalStatus]
   ];
 
-  elements.dashboard.innerHTML = "";
+  elements.dashboard.replaceChildren();
   kpis.forEach(([title, value]) => {
     const div = document.createElement("div");
     div.className = "kpi";
-    div.innerHTML = `<strong>${title}</strong><br>${value}`;
+    const strong = document.createElement("strong");
+    strong.textContent = title;
+    div.appendChild(strong);
+    div.appendChild(document.createElement("br"));
+    div.appendChild(document.createTextNode(value));
     elements.dashboard.appendChild(div);
   });
 }
